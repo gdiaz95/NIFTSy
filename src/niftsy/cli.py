@@ -5,6 +5,7 @@ import json
 import sys
 
 import pandas as pd
+from dotenv import load_dotenv
 
 from niftsy.config import GenerationConfig
 from niftsy.pipeline import generate_synthetic_dataset
@@ -41,6 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
     parser = _build_parser()
     args = parser.parse_args(argv)
 
