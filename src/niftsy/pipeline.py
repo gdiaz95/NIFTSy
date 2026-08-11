@@ -9,7 +9,7 @@ import pandas as pd
 from niftsy.config import GenerationConfig
 from niftsy.exceptions import NiftsyError
 from niftsy.llm.base import LLMBackend
-from niftsy.llm.factory import build_llm_backend
+from niftsy.llm.factory import build_llm_backend, resolve_provider
 from niftsy.tabular.pipeline_step import run_tabular_generation
 from niftsy.text.generation import generate_free_text_column
 
@@ -26,8 +26,9 @@ class GenerationResult:
 
 
 class SyntheticDataGenerator:
-    def __init__(self, config: GenerationConfig | None = None) -> None:
+    def __init__(self, config: GenerationConfig | None = None, gpu_index: int | None = None) -> None:
         self.config = config or GenerationConfig()
+        self._gpu_index = gpu_index
         self._df: pd.DataFrame | None = None
         self._text_columns: list[str] = []
         self._target_column: str | None = None
@@ -138,9 +139,18 @@ class SyntheticDataGenerator:
 
     def _get_or_build_backend(self) -> LLMBackend:
         if self._owned_backend is None:
+            kwargs: dict = {}
+            resolved = resolve_provider(self.config.llm.model, self.config.llm.provider)
+            if resolved == "local":
+                kwargs["gpu_memory_utilization"] = self.config.llm.gpu_memory_utilization
+                kwargs["max_model_len"] = self.config.llm.max_model_len
+                kwargs["enforce_eager"] = self.config.llm.enforce_eager
+                if self._gpu_index is not None:
+                    kwargs["gpu_index"] = self._gpu_index
             self._owned_backend = build_llm_backend(
                 model=self.config.llm.model,
                 provider=self.config.llm.provider,
+                **kwargs,
             )
         return self._owned_backend
 
@@ -163,6 +173,7 @@ def generate_synthetic_dataset(
     dry_run: bool = False,
     k_neighbors: int | None = None,
     config: GenerationConfig | None = None,
+    gpu_index: int | None = None,
 ) -> GenerationResult:
     """One-shot convenience wrapper around SyntheticDataGenerator for tier-1 users."""
     config = config or GenerationConfig()
@@ -171,7 +182,7 @@ def generate_synthetic_dataset(
     if k_neighbors is not None:
         config.tabular.k_neighbors = k_neighbors
 
-    gen = SyntheticDataGenerator(config)
+    gen = SyntheticDataGenerator(config, gpu_index=gpu_index)
     gen.fit(df, text_columns=text_columns, target_column=target_column, feature_weights=feature_weights)
     try:
         return gen.generate(n_rows=n_rows, seed=seed, llm=llm, dry_run=dry_run)
