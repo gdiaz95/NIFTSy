@@ -24,6 +24,7 @@ def _empty_response_retry_sleep(config):
 class GeminiBackend:
     def __init__(self, model: str, api_key: str | None = None) -> None:
         self.model_name = model
+        self.provider = "gemini"
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             raise NiftsyError(

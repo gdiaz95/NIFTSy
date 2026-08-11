@@ -46,6 +46,8 @@ class LLMConfig:
     batch_log_every: int = 0
     parallel_api_calls: bool = True
     api_parallel_shards: int = 64
+    rerun_failed_rows: bool = True
+    failed_row_retry_passes: int = 1
 
     # Text-vector / distance-blending knobs.
     text_vector_hash_dim: int = 2000

@@ -75,6 +75,7 @@ def _extract_message_text(message):
 class OpenAIBackend:
     def __init__(self, model: str, api_key: str | None = None) -> None:
         self.model_name = model
+        self.provider = "openai"
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise NiftsyError(

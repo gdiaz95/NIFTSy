@@ -32,6 +32,7 @@ class LocalVLLMBackend:
         gpu_index: int | None = None,
     ) -> None:
         self.model_name = model
+        self.provider = "local"
         self.gpu_util = gpu_memory_utilization
         self.max_len = max_model_len
         self.enforce_eager = enforce_eager

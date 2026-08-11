@@ -9,6 +9,8 @@ __all__ = ["LLMBackend", "UsageTracker", "NiftsyError"]
 
 
 class LLMBackend(Protocol):
+    provider: str
+
     def generate_batch(self, prompts: list[str], config: dict | None = None) -> list[str]:
         ...
 
