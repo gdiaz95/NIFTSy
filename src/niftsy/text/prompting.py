@@ -5,7 +5,6 @@ from typing import Any
 
 import pandas as pd
 
-
 META_PHRASES = [
     "[end]",
     "to ensure adherence",

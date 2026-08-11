@@ -31,3 +31,14 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.16.2",
 ]
+
+[tool.ruff.lint]
+# Correctness (pyflakes) + basic pycodestyle errors + import sorting.
+# Deliberately not the extended security/style families (S, BLE, TRY, FURB,
+# PLW, ...) -- v0.1 guardrails, not a lint-hardening project.
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+# pandas/pyyaml/tqdm/scipy don't ship (or we don't install) type stubs --
+# not worth an extra stub-package dependency for v0.1.
+ignore_missing_imports = true

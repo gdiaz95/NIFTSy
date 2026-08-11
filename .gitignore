@@ -14,3 +14,5 @@ wheels/
 
 # Internal Planning files
 plan.md
+
+.coverage

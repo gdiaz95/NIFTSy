@@ -7,7 +7,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-
 TOKEN_RE = re.compile(r"\b\w+\b", flags=re.UNICODE)
 
 

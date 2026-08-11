@@ -27,7 +27,7 @@ class NPGC_special:
     def __init__(self, enforce_min_max_values: bool = True, epsilon: float | None = 1.0) -> None:
         self.enforce_min_max_values = enforce_min_max_values
         self.epsilon = epsilon
-        self._model_state = {}
+        self._model_state: dict[str, Any] = {}
         self._fitted = False
 
     def fit(self, data: pd.DataFrame, epsilon: float | None = None) -> None:
@@ -213,7 +213,7 @@ class NPGC_special:
             else:
                 sorted_labels = np.sort(valid_data.unique()).tolist()
                 val_counts = valid_data.value_counts()
-                counts_in_order = np.array([val_counts.get(l, 0) for l in sorted_labels], dtype=float)
+                counts_in_order = np.array([val_counts.get(label, 0) for label in sorted_labels], dtype=float)
 
                 if eps_marginal is not None and eps_marginal > 0:
                     noise = rng.laplace(0, 1.0 / eps_marginal, size=len(counts_in_order))
@@ -481,7 +481,7 @@ class NPGC_special:
         # counts aligned with sorted_labels (which already excludes NaN)
         uniq, cnt = np.unique(vals, return_counts=True)
         count_map = dict(zip(uniq, cnt))
-        counts = np.array([count_map.get(l, 0) for l in sorted_labels], dtype=float)
+        counts = np.array([count_map.get(label, 0) for label in sorted_labels], dtype=float)
 
         # DP noise on category counts (if epsilon enabled)
         if epsilon is not None and epsilon > 0:

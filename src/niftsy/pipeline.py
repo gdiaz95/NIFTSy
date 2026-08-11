@@ -98,7 +98,7 @@ class SyntheticDataGenerator:
             text_columns=self._text_columns,
             feature_weights=self._feature_weights,
             compute_knn=bool(self._text_columns) and k_neighbors > 0,
-            max_rows=n_rows,
+            n_rows=n_rows,
             seed=seed,
         )
 

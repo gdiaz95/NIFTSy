@@ -8,6 +8,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from niftsy.config import GenerationConfig
+from niftsy.exceptions import NiftsyError
 from niftsy.pipeline import generate_synthetic_dataset
 
 
@@ -41,12 +42,22 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _fail(message: str) -> int:
+    print(f"Error: {message}", file=sys.stderr)
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    config = GenerationConfig.from_yaml(args.config) if args.config else GenerationConfig()
+    try:
+        config = GenerationConfig.from_yaml(args.config) if args.config else GenerationConfig()
+    except FileNotFoundError:
+        return _fail(f"config file not found: {args.config}")
+    except OSError as exc:
+        return _fail(f"could not read config file {args.config}: {exc}")
 
     if args.model is not None:
         config.llm.model = args.model
@@ -63,21 +74,36 @@ def main(argv: list[str] | None = None) -> int:
 
     feature_weights = None
     if args.feature_weights_json:
-        with open(args.feature_weights_json) as f:
-            feature_weights = json.load(f)
+        try:
+            with open(args.feature_weights_json) as f:
+                feature_weights = json.load(f)
+        except FileNotFoundError:
+            return _fail(f"feature-weights JSON file not found: {args.feature_weights_json}")
+        except json.JSONDecodeError as exc:
+            return _fail(f"feature-weights JSON file is not valid JSON: {exc}")
 
-    df = pd.read_csv(args.input_csv)
+    try:
+        df = pd.read_csv(args.input_csv)
+    except FileNotFoundError:
+        return _fail(f"input CSV not found: {args.input_csv}")
+    except pd.errors.EmptyDataError:
+        return _fail(f"input CSV is empty: {args.input_csv}")
+    except pd.errors.ParserError as exc:
+        return _fail(f"could not parse input CSV {args.input_csv}: {exc}")
 
-    result = generate_synthetic_dataset(
-        df,
-        text_columns=args.text_columns,
-        target_column=args.target_column,
-        feature_weights=feature_weights,
-        n_rows=args.n_rows,
-        dry_run=args.dry_run,
-        config=config,
-        gpu_index=args.gpu_index,
-    )
+    try:
+        result = generate_synthetic_dataset(
+            df,
+            text_columns=args.text_columns,
+            target_column=args.target_column,
+            feature_weights=feature_weights,
+            n_rows=args.n_rows,
+            dry_run=args.dry_run,
+            config=config,
+            gpu_index=args.gpu_index,
+        )
+    except NiftsyError as exc:
+        return _fail(str(exc))
 
     if args.dry_run:
         print(f"Dry run estimate: {result.run_log}")

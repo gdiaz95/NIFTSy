@@ -29,7 +29,7 @@ def generate_free_text_column(
     llm_backend: LLMBackend,
     original_df: pd.DataFrame,
     synthetic_df: pd.DataFrame,
-    nn_idx: np.ndarray,
+    nn_idx: np.ndarray | None,
     llm_cfg: LLMConfig,
     prompt_cfg: PromptConfig,
     text_column: str,

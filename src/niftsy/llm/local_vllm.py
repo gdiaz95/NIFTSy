@@ -124,7 +124,7 @@ class LocalVLLMBackend:
                 ]
                 formatted.append(
                     tokenizer.apply_chat_template(
-                        messages,
+                        messages,  # type: ignore[arg-type]
                         tokenize=False,
                         add_generation_prompt=True,
                     )

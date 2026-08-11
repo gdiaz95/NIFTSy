@@ -1,4 +1,5 @@
 import pandas as pd
+
 from niftsy import generate_synthetic_dataset
 from tests.integration.conftest import FakeLLMBackend
 
@@ -49,6 +50,7 @@ def test_dry_run_makes_no_backend_calls():
 
 def test_unknown_text_column_raises_immediately():
     import pytest
+
     from niftsy.exceptions import NiftsyError
     df = _real_df()
     with pytest.raises(NiftsyError, match="typo_column"):

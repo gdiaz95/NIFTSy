@@ -1,4 +1,8 @@
-import subprocess, sys, pandas as pd
+import subprocess
+import sys
+
+import pandas as pd
+
 
 def test_cli_dry_run(tmp_path):
     csv_path = tmp_path / "in.csv"

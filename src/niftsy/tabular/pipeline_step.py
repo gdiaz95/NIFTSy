@@ -17,7 +17,7 @@ def run_tabular_generation(
     text_columns: list[str],
     feature_weights: dict[str, float] | None = None,
     compute_knn: bool = True,
-    max_rows: int | None = None,
+    n_rows: int | None = None,
     seed: int | None = None,
 ) -> TabularGenerationResult:
     """Fit NPGC and generate synthetic tabular rows with neighbor indices."""
@@ -36,7 +36,7 @@ def run_tabular_generation(
 
     real_z = synthesizer._model_state["transformed_data"]
     LOGGER.info("- Sampling synthetic tabular rows...")
-    n_samples = min(len(tabular_features), max_rows) if max_rows else len(tabular_features)
+    n_samples = n_rows if n_rows is not None else len(tabular_features)
     synthetic_data, z_correlated = synthesizer.sample(n_samples, seed=seed)
     LOGGER.info(
         f"- Sampled synthetic rows: {synthetic_data.shape[0]} | "
