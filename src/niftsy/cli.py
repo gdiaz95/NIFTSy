@@ -7,7 +7,7 @@ import sys
 import pandas as pd
 from dotenv import load_dotenv
 
-from niftsy.config import GenerationConfig, LLMConfig
+from niftsy.config import VALID_PROVIDERS, GenerationConfig, LLMConfig, TabularConfig
 from niftsy.exceptions import NiftsyError
 from niftsy.pipeline import generate_synthetic_dataset
 from niftsy.text.detect import describe_text_columns, detect_free_text_columns
@@ -176,12 +176,122 @@ def _run_setup(args: argparse.Namespace) -> int:
             if weight != 1.0:
                 feature_weights[col] = weight
 
+    default_llm = LLMConfig()
+    default_tabular = TabularConfig()
+
+    # 5. Model.
+    print(
+        "\nModel: which LLM generates the free text. Examples: "
+        "gemini-3.1-flash-lite-preview, gpt-4o-mini, Qwen/Qwen2.5-14B-Instruct (local)."
+    )
+    model_response = input(f"Model [{default_llm.model}]: ").strip()
+    model = model_response or default_llm.model
+
+    # 6. Provider.
+    print(
+        "\nProvider: which backend actually makes the call. 'auto' picks one based "
+        f"on the model name; or force one of {sorted(VALID_PROVIDERS)}."
+    )
+    provider_response = input(f"Provider [{default_llm.provider}]: ").strip()
+    provider = provider_response or default_llm.provider
+    if provider not in VALID_PROVIDERS:
+        return _fail(f"invalid provider: {provider!r}; must be one of {sorted(VALID_PROVIDERS)}")
+
+    # 7. k_neighbors.
+    print(
+        "\nk_neighbors: how many similar real rows are shown to the LLM as style/"
+        "content examples for each synthetic row. Higher = more context and slower; "
+        "also a bigger privacy consideration if those real rows are near-unique."
+    )
+    k_response = input(f"k_neighbors [{default_tabular.k_neighbors}]: ").strip()
+    if k_response:
+        try:
+            k_neighbors = int(k_response)
+        except ValueError:
+            return _fail(f"invalid k_neighbors: {k_response!r}")
+    else:
+        k_neighbors = default_tabular.k_neighbors
+
+    # 8. Batch size.
+    print(
+        "\nBatch size: how many prompts are sent to the LLM per request while "
+        "generating free text. Bigger batches finish faster but hit the API/GPU harder."
+    )
+    batch_response = input(f"Batch size [{default_llm.batch_size}]: ").strip()
+    if batch_response:
+        try:
+            batch_size = int(batch_response)
+        except ValueError:
+            return _fail(f"invalid batch size: {batch_response!r}")
+    else:
+        batch_size = default_llm.batch_size
+
+    # 9. Parallelize API calls + shard count.
+    print(
+        "\nParallelize: split generation across several concurrent shards for "
+        "speed. Only applies to gemini/openai (local always runs as one batch)."
+    )
+    default_parallel_label = "Y/n" if default_llm.parallel_api_calls else "y/N"
+    parallel_response = input(f"Parallelize API calls? [{default_parallel_label}]: ").strip().lower()
+    if not parallel_response:
+        parallel_api_calls = default_llm.parallel_api_calls
+    else:
+        parallel_api_calls = parallel_response in {"y", "yes"}
+
+    api_parallel_shards = default_llm.api_parallel_shards
+    if parallel_api_calls:
+        print("How many parallel shards? Each shard generates its own rows independently.")
+        shards_response = input(f"Parallel shards [{default_llm.api_parallel_shards}]: ").strip()
+        if shards_response:
+            try:
+                api_parallel_shards = int(shards_response)
+            except ValueError:
+                return _fail(f"invalid shard count: {shards_response!r}")
+
+    # 10. distance_beta_default.
+    print(
+        "\ndistance_beta_default: how much weight free-text similarity gets, versus "
+        "tabular similarity, when picking a synthetic row's nearest real neighbors. "
+        "0 = ignore text similarity entirely; higher = weigh it more heavily."
+    )
+    beta_response = input(f"distance_beta_default [{default_llm.distance_beta_default}]: ").strip()
+    if beta_response:
+        try:
+            distance_beta_default = float(beta_response)
+        except ValueError:
+            return _fail(f"invalid distance_beta_default: {beta_response!r}")
+    else:
+        distance_beta_default = default_llm.distance_beta_default
+
+    # 11. text_vector_hash_dim.
+    print(
+        "\ntext_vector_hash_dim: size of the hashed vector used internally to "
+        "compare free-text columns when finding neighbors. Bigger = finer-grained "
+        "text matching, at the cost of more memory."
+    )
+    hash_response = input(f"text_vector_hash_dim [{default_llm.text_vector_hash_dim}]: ").strip()
+    if hash_response:
+        try:
+            text_vector_hash_dim = int(hash_response)
+        except ValueError:
+            return _fail(f"invalid text_vector_hash_dim: {hash_response!r}")
+    else:
+        text_vector_hash_dim = default_llm.text_vector_hash_dim
+
     config = GenerationConfig(
         text_columns=text_columns,
         target_column=target_column,
         feature_weights=feature_weights,
     )
+    config.tabular.k_neighbors = k_neighbors
+    config.llm.model = model
+    config.llm.provider = provider
     config.llm.max_words_generation = max_words_generation
+    config.llm.batch_size = batch_size
+    config.llm.parallel_api_calls = parallel_api_calls
+    config.llm.api_parallel_shards = api_parallel_shards
+    config.llm.distance_beta_default = distance_beta_default
+    config.llm.text_vector_hash_dim = text_vector_hash_dim
     config.to_yaml(args.output_yaml)
 
     print(f"\nWrote config to {args.output_yaml}")
