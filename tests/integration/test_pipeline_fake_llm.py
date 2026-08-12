@@ -1,6 +1,6 @@
 import pandas as pd
 
-from niftsy import generate_synthetic_dataset
+from niftsy import GenerationConfig, SyntheticDataGenerator, generate_synthetic_dataset
 from tests.integration.conftest import FakeLLMBackend
 
 
@@ -55,3 +55,14 @@ def test_unknown_text_column_raises_immediately():
     df = _real_df()
     with pytest.raises(NiftsyError, match="typo_column"):
         generate_synthetic_dataset(df, text_columns=["typo_column"], model="fake-model", n_rows=3, llm=FakeLLMBackend())
+
+
+def test_fit_falls_back_to_config_dataset_fields():
+    df = _real_df()
+    config = GenerationConfig(text_columns=["bio"], target_column="income")
+    gen = SyntheticDataGenerator(config)
+    gen.fit(df)  # no text_columns/target_column passed -- must come from config
+    result = gen.generate(n_rows=4, llm=FakeLLMBackend())
+    gen.close()
+    assert len(result.dataframe) == 4
+    assert result.dataframe["bio"].str.len().gt(0).all()

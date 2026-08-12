@@ -91,6 +91,12 @@ class PromptConfig:
 
 @dataclass
 class GenerationConfig:
+    # Dataset-specific: which columns matter and how, for this particular CSV.
+    text_columns: list[str] = field(default_factory=list)
+    target_column: str | None = None
+    feature_weights: dict[str, float] = field(default_factory=dict)
+
+    # Run settings: how generation itself behaves, independent of the dataset.
     tabular: TabularConfig = field(default_factory=TabularConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     prompt: PromptConfig = field(default_factory=PromptConfig)

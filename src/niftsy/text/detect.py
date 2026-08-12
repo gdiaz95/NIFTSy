@@ -11,6 +11,40 @@ def _word_count_series(series: pd.Series) -> pd.Series:
     return non_empty.str.split().str.len().astype("int64")
 
 
+def describe_word_counts(df: pd.DataFrame, text_column: str) -> dict[str, float | int]:
+    """Word-count statistics (count/mean/median/p90/p95/max) for a text column.
+
+    Useful as a quick pre-generation checkup to pick a sensible
+    ``max_words_generation`` -- an opt-in convenience, never called
+    automatically by the pipeline.
+    """
+    counts = _word_count_series(df[text_column])
+    if counts.empty:
+        return {
+            "count": 0,
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "p95": 0.0,
+            "max": 0,
+        }
+    return {
+        "count": int(counts.shape[0]),
+        "mean": float(counts.mean()),
+        "median": float(counts.median()),
+        "p90": float(counts.quantile(0.90)),
+        "p95": float(counts.quantile(0.95)),
+        "max": int(counts.max()),
+    }
+
+
+def describe_text_columns(
+    df: pd.DataFrame, text_columns: list[str]
+) -> dict[str, dict[str, float | int]]:
+    """``describe_word_counts`` for each of several text columns."""
+    return {col: describe_word_counts(df, col) for col in text_columns}
+
+
 def detect_free_text_columns(
     df: pd.DataFrame,
     threshold: float = 0.8,

@@ -42,7 +42,16 @@ class SyntheticDataGenerator:
         target_column: str | None = None,
         feature_weights: dict[str, float] | None = None,
     ) -> "SyntheticDataGenerator":
-        text_columns = text_columns or []
+        # None means "not specified by the caller" -> fall back to the config's
+        # dataset-specific fields. An explicit [] / {} is respected as-is (e.g.
+        # "no text columns" for a tabular-only run), not treated as "unset".
+        if text_columns is None:
+            text_columns = self.config.text_columns
+        if target_column is None:
+            target_column = self.config.target_column
+        if feature_weights is None:
+            feature_weights = self.config.feature_weights or None
+
         unknown = [col for col in text_columns if col not in df.columns]
         if target_column is not None and target_column not in df.columns:
             unknown.append(target_column)
