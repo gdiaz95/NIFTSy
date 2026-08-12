@@ -1,6 +1,11 @@
 import pandas as pd
 
-from niftsy import GenerationConfig, SyntheticDataGenerator, generate_synthetic_dataset
+from niftsy import (
+    GenerationConfig,
+    LLMConfig,
+    SyntheticDataGenerator,
+    generate_synthetic_dataset,
+)
 from tests.integration.conftest import FakeLLMBackend
 
 
@@ -55,6 +60,20 @@ def test_unknown_text_column_raises_immediately():
     df = _real_df()
     with pytest.raises(NiftsyError, match="typo_column"):
         generate_synthetic_dataset(df, text_columns=["typo_column"], model="fake-model", n_rows=3, llm=FakeLLMBackend())
+
+
+def test_generate_synthetic_dataset_does_not_clobber_configured_provider():
+    # Regression test: generate_synthetic_dataset() used to unconditionally
+    # overwrite config.llm.model/provider with its own hardcoded defaults
+    # whenever the caller didn't ALSO pass model=/provider= kwargs -- silently
+    # resetting a caller-configured provider (e.g. "local") back to "auto".
+    df = _real_df()
+    config = GenerationConfig(llm=LLMConfig(model="my-local-model", provider="local"))
+    generate_synthetic_dataset(
+        df, text_columns=["bio"], n_rows=3, llm=FakeLLMBackend(), config=config,
+    )
+    assert config.llm.model == "my-local-model"
+    assert config.llm.provider == "local"
 
 
 def test_fit_falls_back_to_config_dataset_fields():

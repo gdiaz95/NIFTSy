@@ -12,7 +12,6 @@ import pandas as pd
 from tqdm import tqdm
 
 from niftsy.config import LLMConfig, PromptConfig
-from niftsy.exceptions import NiftsyError
 from niftsy.llm.base import LLMBackend
 from niftsy.text.prompting import (
     build_prompt_from_structured_with_neighbors,
@@ -23,6 +22,31 @@ from niftsy.text.prompting import (
 )
 
 LOGGER = logging.getLogger(__name__)
+
+# Substrings that mean "this will keep failing for every remaining row too,
+# no matter how small the retry unit is" -- these are account-wide/request-
+# wide states (API quota exhaustion, an unsupported sampling parameter for
+# this model), so falling back to a one-row-at-a-time retry loop is pointless;
+# stop immediately instead. Checked by message content, not exception type.
+#
+# Deliberately NOT included: local vLLM "out of memory"/CUDA errors. Those
+# are batch-size- or contention-dependent, not account-wide -- a single
+# oversized prompt or a transient GPU memory spike from another job sharing
+# the GPU can fail a whole batch call while every other prompt in it would
+# have succeeded fine. The per-row fallback below already retries at a much
+# smaller unit (one prompt at a time), which is the right mitigation for
+# exactly that case -- stopping immediately would deny it the chance to work.
+_SYSTEMIC_ERROR_MARKERS = (
+    "unsupported_parameter",
+    "unsupported_value",
+    "insufficient_quota",
+    "quota",
+)
+
+
+def _is_systemic_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in _SYSTEMIC_ERROR_MARKERS)
 
 
 def generate_free_text_column(
@@ -161,19 +185,11 @@ def generate_free_text_column(
         failed_updates: dict[int, str] = {}
         try:
             responses = llm_backend.generate_batch(prompts, config=generation_config)
-        except NiftsyError as exc:
-            error_msg = str(exc).lower()
-            if (
-                "unsupported_parameter" in error_msg
-                or "unsupported_value" in error_msg
-                or "insufficient_quota" in error_msg
-                or "quota" in error_msg
-            ):
-                LOGGER.error(f"STOPPING: Systematic API error detected on batch: {exc}")
+        except Exception as exc:
+            if _is_systemic_error(exc):
+                LOGGER.error(f"STOPPING: Systematic error detected on batch: {exc}")
                 raise
             # Otherwise treat as batch failure and continue with single-row fallback
-            responses = []
-        except Exception:
             responses = []
 
         if responses:
@@ -212,22 +228,14 @@ def generate_free_text_column(
             if looks_like_meta_output(cleaned_response):
                 cleaned_response = ""
             return cap_words(cleaned_response, max_words_generation), None
-        except NiftsyError as exc:
-            error_msg = str(exc).lower()
-            if (
-                "unsupported_parameter" in error_msg
-                or "unsupported_value" in error_msg
-                or "insufficient_quota" in error_msg
-                or "quota" in error_msg
-            ):
+        except Exception as exc:
+            if _is_systemic_error(exc):
                 LOGGER.error(
-                    f"STOPPING: Systematic API error detected: {exc}. "
-                    f"Row {i} encountered a model compatibility issue. "
-                    "This error affects ALL rows - stopping pipeline immediately."
+                    f"STOPPING: Systematic error detected: {exc}. "
+                    f"Row {i} encountered it, and it will affect every remaining row too - "
+                    "stopping pipeline immediately."
                 )
                 raise
-            return None, f"NiftsyError: {exc}"
-        except Exception as exc:
             return None, f"{type(exc).__name__}: {exc}"
 
     def _run_sequential() -> tuple[pd.DataFrame, dict[int, str]]:

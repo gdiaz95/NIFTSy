@@ -40,6 +40,23 @@ def is_retryable_http_error(status_code):
     return status_code in {408, 429, 500, 502, 503, 504}
 
 
+# Substrings that mean "this will never succeed no matter how many times you
+# retry" -- e.g. an exhausted billing balance is not a transient rate limit,
+# even though providers report both as HTTP 429. Retrying these just burns
+# time confirming what the first response already said.
+_PERMANENT_ERROR_MARKERS = (
+    "insufficient_quota",
+    "credit_balance_exhausted",
+    "unsupported_parameter",
+    "unsupported_value",
+)
+
+
+def is_permanent_error(details):
+    lower = details.lower()
+    return any(marker in lower for marker in _PERMANENT_ERROR_MARKERS)
+
+
 def safe_read_http_error(exc):
     try:
         body = exc.read().decode("utf-8")
@@ -71,6 +88,8 @@ def retry_api_request(
             return make_request()
         except urllib.error.HTTPError as exc:
             details = safe_read_http_error(exc)
+            if is_permanent_error(details):
+                raise NiftsyError(f"{model_message} Details: {details}") from exc
             if is_retryable_http_error(exc.code) and attempt < max_attempts:
                 wait_seconds = base_wait_seconds * attempt
                 LOGGER.warning(
@@ -94,6 +113,8 @@ def retry_api_request(
             status_code = extract_status_code(exc)
             if status_code is not None:
                 details = str(exc)
+                if is_permanent_error(details):
+                    raise NiftsyError(f"{model_message} Details: {details}") from exc
                 if is_retryable_http_error(status_code) and attempt < max_attempts:
                     wait_seconds = base_wait_seconds * attempt
                     LOGGER.warning(

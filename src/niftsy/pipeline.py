@@ -174,8 +174,8 @@ def generate_synthetic_dataset(
     text_columns: list[str] | None = None,
     target_column: str | None = None,
     feature_weights: dict[str, float] | None = None,
-    model: str = "gemini-3.1-flash-lite-preview",
-    provider: str = "auto",
+    model: str | None = None,
+    provider: str | None = None,
     n_rows: int | None = None,
     seed: int | None = None,
     llm: LLMBackend | None = None,
@@ -186,8 +186,13 @@ def generate_synthetic_dataset(
 ) -> GenerationResult:
     """One-shot convenience wrapper around SyntheticDataGenerator for tier-1 users."""
     config = config or GenerationConfig()
-    config.llm.model = model
-    config.llm.provider = provider
+    # None means "not specified by the caller" -> respect whatever's already on
+    # `config` (its own default, or one the caller set explicitly) instead of
+    # clobbering it with a hardcoded literal.
+    if model is not None:
+        config.llm.model = model
+    if provider is not None:
+        config.llm.provider = provider
     if k_neighbors is not None:
         config.tabular.k_neighbors = k_neighbors
 
