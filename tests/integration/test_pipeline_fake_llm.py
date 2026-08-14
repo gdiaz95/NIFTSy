@@ -76,6 +76,41 @@ def test_generate_synthetic_dataset_does_not_clobber_configured_provider():
     assert config.llm.provider == "local"
 
 
+def test_run_log_includes_config_snapshot_hash_and_duration():
+    df = _real_df()
+    config = GenerationConfig(llm=LLMConfig(model="fake-model", provider="auto"))
+    result = generate_synthetic_dataset(
+        df, text_columns=["bio"], n_rows=3, llm=FakeLLMBackend(), config=config,
+    )
+    assert result.run_log["dry_run"] is False
+    assert result.run_log["config"]["llm"]["model"] == "fake-model"
+    assert isinstance(result.run_log["config_hash"], str) and len(result.run_log["config_hash"]) == 12
+    assert result.run_log["duration_seconds"] >= 0
+    assert "h " in result.run_log["duration_human"]
+
+    # Same config -> same fingerprint; a real behavior change -> different one.
+    same_config_result = generate_synthetic_dataset(
+        df, text_columns=["bio"], n_rows=3, llm=FakeLLMBackend(), config=GenerationConfig(llm=LLMConfig(model="fake-model", provider="auto")),
+    )
+    assert same_config_result.run_log["config_hash"] == result.run_log["config_hash"]
+
+    different_config_result = generate_synthetic_dataset(
+        df, text_columns=["bio"], n_rows=3, llm=FakeLLMBackend(), k_neighbors=1,
+        config=GenerationConfig(llm=LLMConfig(model="fake-model", provider="auto")),
+    )
+    assert different_config_result.run_log["config_hash"] != result.run_log["config_hash"]
+
+
+def test_dry_run_log_also_includes_config_snapshot_and_hash():
+    df = _real_df()
+    result = generate_synthetic_dataset(
+        df, text_columns=["bio"], model="fake-model", n_rows=3, llm=FakeLLMBackend(), dry_run=True,
+    )
+    assert result.run_log["dry_run"] is True
+    assert "config" in result.run_log
+    assert "config_hash" in result.run_log
+
+
 def test_fit_falls_back_to_config_dataset_fields():
     df = _real_df()
     config = GenerationConfig(text_columns=["bio"], target_column="income")

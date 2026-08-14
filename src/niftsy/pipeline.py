@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import dataclasses
+import hashlib
+import json
 import logging
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -14,6 +18,21 @@ from niftsy.tabular.pipeline_step import run_tabular_generation
 from niftsy.text.generation import generate_free_text_column
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _config_fingerprint(config: GenerationConfig) -> str:
+    """Short, stable hash identifying this exact set of run parameters
+    (model, provider, epsilon, k_neighbors, alpha/beta, hash_dim, prompt
+    template, etc.) -- lets two log files be compared to see whether they
+    used identical settings."""
+    canonical = json.dumps(dataclasses.asdict(config), sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+
+
+def _format_duration(seconds: float) -> str:
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes, secs = divmod(remainder, 60)
+    return f"{hours}h {minutes}m {secs}s"
 
 
 @dataclass
@@ -78,6 +97,8 @@ class SyntheticDataGenerator:
 
         n_rows = n_rows if n_rows is not None else len(self._df)
         k_neighbors = self.config.tabular.k_neighbors
+        config_snapshot = dataclasses.asdict(self.config)
+        config_hash = _config_fingerprint(self.config)
 
         if dry_run:
             n_calls = n_rows * len(self._text_columns)
@@ -93,8 +114,12 @@ class SyntheticDataGenerator:
                     "dry_run": True,
                     "estimated_calls": n_calls,
                     "estimated_tokens": estimated_tokens,
+                    "config": config_snapshot,
+                    "config_hash": config_hash,
                 },
             )
+
+        start_time = time.time()
 
         tabular_cfg = {
             "enforce_min_max_values": self.config.tabular.enforce_min_max_values,
@@ -132,10 +157,15 @@ class SyntheticDataGenerator:
             if hasattr(backend, "usage"):
                 llm_usage = backend.usage.summary()
 
+        duration_seconds = time.time() - start_time
         run_log = {
             "dry_run": False,
             "n_rows": len(dataframe),
             "text_columns": list(self._text_columns),
+            "duration_seconds": duration_seconds,
+            "duration_human": _format_duration(duration_seconds),
+            "config": config_snapshot,
+            "config_hash": config_hash,
         }
 
         return GenerationResult(

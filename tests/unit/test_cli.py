@@ -1,5 +1,8 @@
+from datetime import date
+from pathlib import Path
+
 import niftsy.cli as cli_module
-from niftsy.cli import _build_model_menu
+from niftsy.cli import _build_model_menu, _default_output_path, _list_csv_files
 
 
 def test_build_model_menu_lists_local_before_recommended_without_duplicates():
@@ -71,6 +74,29 @@ def test_local_cached_models_returns_empty_list_on_scan_failure(monkeypatch):
 
     monkeypatch.setattr(cli_module, "scan_cache_dir", _raise)
     assert cli_module._local_cached_models() == []
+
+
+def test_default_output_path_uses_synthetic_date_suffix_next_to_input():
+    today = date.today().isoformat()
+    result = _default_output_path("data/adult_with_three.csv")
+    assert result == Path(f"data/adult_with_three_synthetic_{today}.csv")
+
+
+def test_default_output_path_falls_back_to_csv_suffix_when_input_has_none():
+    today = date.today().isoformat()
+    result = _default_output_path("data/adult_with_three")
+    assert result == Path(f"data/adult_with_three_synthetic_{today}.csv")
+
+
+def test_list_csv_files_filters_and_sorts(tmp_path):
+    (tmp_path / "b.csv").write_text("a,b\n1,2\n")
+    (tmp_path / "a.csv").write_text("a,b\n1,2\n")
+    (tmp_path / "notes.txt").write_text("not a csv")
+    assert _list_csv_files(tmp_path) == ["a.csv", "b.csv"]
+
+
+def test_list_csv_files_returns_empty_list_for_missing_directory(tmp_path):
+    assert _list_csv_files(tmp_path / "does-not-exist") == []
 
 
 def test_run_setup_reports_clean_error_on_eof_instead_of_crashing(monkeypatch, capsys):

@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
+from pathlib import Path
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -69,6 +71,23 @@ def _build_model_menu(
     return options
 
 
+def _default_output_path(input_csv: str) -> Path:
+    """<input_dir>/<input_stem>_synthetic_<today>.csv -- the automatic output
+    location whenever -o/--output isn't given explicitly."""
+    input_path = Path(input_csv)
+    today = date.today().isoformat()
+    suffix = input_path.suffix or ".csv"
+    return input_path.parent / f"{input_path.stem}_synthetic_{today}{suffix}"
+
+
+def _list_csv_files(directory: Path) -> list[str]:
+    """Read-only directory listing, sorted. [] if the directory doesn't
+    exist -- callers handle that by asking for a path directly instead."""
+    if not directory.is_dir():
+        return []
+    return sorted(p.name for p in directory.glob("*.csv"))
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="niftsy")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -77,7 +96,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "generate", help="Generate a synthetic dataset from a CSV."
     )
     generate.add_argument("input_csv")
-    generate.add_argument("-o", "--output", required=True, dest="output_csv")
+    generate.add_argument(
+        "-o", "--output", default=None, dest="output_csv",
+        help="Output CSV path. Defaults to <input_dir>/<input_name>_synthetic_<date>.csv.",
+    )
     generate.add_argument(
         "--text-column", action="append", dest="text_columns", default=[],
         help="Free-text column to generate. Repeatable. Falls back to --config's "
@@ -95,7 +117,11 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("--dry-run", action="store_true")
     generate.add_argument("--gpu-index", type=int, default=None, help="Local-only.")
     generate.add_argument("--gpu-memory-utilization", type=float, default=None, help="Local-only.")
-    generate.add_argument("--run-log", default=None, help="Optional path to write a JSON run log.")
+    generate.add_argument(
+        "--run-log", default=None,
+        help="Path to write the JSON run log. Defaults to the output CSV's path "
+             "with a .json extension. Always written.",
+    )
 
     inspect = subparsers.add_parser(
         "inspect",
@@ -112,7 +138,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Interactively build a GenerationConfig YAML for a dataset "
              "(text columns, target column, max words, feature weights).",
     )
-    setup.add_argument("input_csv")
+    setup.add_argument(
+        "input_csv", nargs="?", default=None,
+        help="Input CSV path. If omitted, setup asks for a data directory "
+             "and lets you pick a file from it interactively.",
+    )
     setup.add_argument(
         "-o", "--output", default="niftsy_config.yml", dest="output_yaml",
         help="Path to write the config YAML (default: niftsy_config.yml).",
@@ -166,10 +196,41 @@ def _run_setup(args: argparse.Namespace) -> int:
 
 
 def _run_setup_impl(args: argparse.Namespace) -> int:
-    df, status = _read_csv(args.input_csv)
+    input_csv = args.input_csv
+    if input_csv is None:
+        # 0. Data directory.
+        print("Data directory: where is your input CSV located?")
+        dir_response = input("Directory [./data]: ").strip()
+        data_dir = Path(dir_response or "./data")
+        csv_files = _list_csv_files(data_dir)
+        if csv_files:
+            print(f"CSV files found in {data_dir}:")
+            for i, name in enumerate(csv_files, start=1):
+                print(f"  {i}. {name}")
+            file_response = input("Pick a file [1]: ").strip()
+            if not file_response:
+                input_csv = str(data_dir / csv_files[0])
+            elif file_response.isdigit():
+                choice = int(file_response)
+                if 1 <= choice <= len(csv_files):
+                    input_csv = str(data_dir / csv_files[choice - 1])
+                else:
+                    return _fail(f"invalid file choice: {choice}")
+            else:
+                # Non-numeric input is a direct path override -- consistent
+                # with the rest of the wizard's "suggestion, or type your
+                # own" prompts.
+                input_csv = file_response
+        else:
+            file_response = input(f"No CSV files found in {data_dir}. Enter a file path: ").strip()
+            if not file_response:
+                return _fail("no input CSV specified.")
+            input_csv = file_response
+
+    df, status = _read_csv(input_csv)
     if df is None:
         return status
-    print(f"Loaded {len(df)} rows, {len(df.columns)} columns from {args.input_csv}.\n")
+    print(f"Loaded {len(df)} rows, {len(df.columns)} columns from {input_csv}.\n")
 
     # 1. Free-text columns.
     detected = detect_free_text_columns(df)
@@ -384,7 +445,7 @@ def _run_setup_impl(args: argparse.Namespace) -> int:
 
     print(f"\nWrote config to {args.output_yaml}")
     print("Run generation with:")
-    print(f"  niftsy generate {args.input_csv} -o output.csv --config {args.output_yaml}")
+    print(f"  niftsy generate {input_csv} --config {args.output_yaml}")
     return 0
 
 
@@ -428,6 +489,9 @@ def _run_generate(args: argparse.Namespace) -> int:
     # text_columns instead of silently forcing a tabular-only run.
     text_columns = args.text_columns if args.text_columns else None
 
+    output_path = Path(args.output_csv) if args.output_csv else _default_output_path(args.input_csv)
+    log_path = Path(args.run_log) if args.run_log else output_path.with_suffix(".json")
+
     try:
         result = generate_synthetic_dataset(
             df,
@@ -442,16 +506,27 @@ def _run_generate(args: argparse.Namespace) -> int:
     except NiftsyError as exc:
         return _fail(str(exc))
 
-    if args.run_log:
-        with open(args.run_log, "w") as f:
-            json.dump(result.run_log, f, indent=2, default=str)
+    # One combined record -- config/timing (already on run_log) plus usage
+    # and per-row failures (separate GenerationResult fields) -- always
+    # written, not gated behind an explicit --run-log flag.
+    log_record = {
+        **result.run_log,
+        "input_csv": str(Path(args.input_csv)),
+        "output_csv": None if args.dry_run else str(output_path),
+        "llm_usage": result.llm_usage,
+        "failed_row_indices": result.failed_row_indices,
+    }
+    with open(log_path, "w") as f:
+        json.dump(log_record, f, indent=2, default=str)
 
     if args.dry_run:
         print(f"Dry run estimate: {result.run_log}")
+        print(f"Wrote log to {log_path}")
         return 0
 
-    result.dataframe.to_csv(args.output_csv, index=False)
-    print(f"Wrote {len(result.dataframe)} rows to {args.output_csv}")
+    result.dataframe.to_csv(output_path, index=False)
+    print(f"Wrote {len(result.dataframe)} rows to {output_path}")
+    print(f"Wrote log to {log_path}")
 
     return 0
 
