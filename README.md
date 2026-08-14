@@ -132,7 +132,7 @@ If `INPUT_CSV` is omitted, the first question asks for a data directory
 | `--dry-run` | Estimate cost, make no LLM calls | off |
 | `--gpu-index` | Force a specific GPU (local provider only) | auto-selects a free one |
 | `--gpu-memory-utilization` | Fraction of GPU memory vLLM may use (local only) | `0.8` |
-| `--run-log` | Path to the JSON log | `<output path>` with `.json` instead of `.csv` |
+| `--run-log` | Path to the JSON log | `<output path>` with `.json` instead of `.csv`; `dry-run_` prefixed if `--dry-run` |
 
 YAML config and flags compose: `--config` loads a full config first, then
 any flag you pass overrides just that field. A run log is **always**
@@ -279,7 +279,10 @@ installed `torch` build expects, or install within the pinned range above.
 ## Run log format
 
 Every `generate` run writes one JSON file (see the CLI table above for the
-default path). Example shape:
+default path). A `--dry-run`'s log gets a `dry-run_` prefix on its filename
+— e.g. `dry-run_my_dataset_synthetic_2026-08-14.json` — so running a dry-run
+and then a real run against the same input on the same day never collide on
+the same log file. Example shape (real run):
 
 ```json
 {
