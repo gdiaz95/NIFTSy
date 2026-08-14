@@ -6,11 +6,67 @@ import sys
 
 import pandas as pd
 from dotenv import load_dotenv
+from huggingface_hub import scan_cache_dir
 
 from niftsy.config import VALID_PROVIDERS, GenerationConfig, LLMConfig, TabularConfig
 from niftsy.exceptions import NiftsyError
+from niftsy.llm.factory import resolve_provider
 from niftsy.pipeline import generate_synthetic_dataset
 from niftsy.text.detect import describe_text_columns, detect_free_text_columns
+
+# gemini-3.1-flash-lite-preview (LLMConfig's own default) doubles as the
+# recommended non-local menu option -- no second API recommendation is
+# listed, to keep the menu tight; any other Gemini/OpenAI name is still just
+# a raw-string entry away.
+_RECOMMENDED_LOCAL_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"  # small, fast, verified working end-to-end
+
+
+def _local_cached_models() -> list[tuple[str, str]]:
+    """Read-only, no-network scan of the local Hugging Face cache.
+
+    Returns (repo_id, human_size) pairs for cached model repos, sorted
+    alphabetically. Returns [] on any failure (e.g. no cache dir yet) --
+    this is a nice-to-have menu enrichment, never something the wizard
+    should fail over.
+    """
+    try:
+        info = scan_cache_dir()
+    except Exception:
+        return []
+    return sorted(
+        (
+            (repo.repo_id, repo.size_on_disk_str)
+            for repo in info.repos
+            if repo.repo_type == "model"
+        ),
+        key=lambda pair: pair[0].lower(),
+    )
+
+
+def _build_model_menu(
+    default_model: str, local_models: list[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """Ordered (label, model_value) menu entries: already-downloaded local
+    models first (labeled with on-disk size), then the recommended
+    non-local default and the recommended local default, de-duplicated.
+    Does not include the trailing 'custom' entry -- the caller appends
+    that separately since it triggers a follow-up prompt rather than
+    carrying a fixed value.
+    """
+    options: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    for model_name, size_label in local_models:
+        options.append((f"{model_name}  ({size_label}, already downloaded)", model_name))
+        seen.add(model_name)
+
+    for model_name in (default_model, _RECOMMENDED_LOCAL_MODEL):
+        if model_name in seen:
+            continue
+        options.append((model_name, model_name))
+        seen.add(model_name)
+
+    return options
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -103,6 +159,13 @@ def _run_inspect(args: argparse.Namespace) -> int:
 
 
 def _run_setup(args: argparse.Namespace) -> int:
+    try:
+        return _run_setup_impl(args)
+    except EOFError:
+        return _fail("unexpected end of input while answering setup questions.")
+
+
+def _run_setup_impl(args: argparse.Namespace) -> int:
     df, status = _read_csv(args.input_csv)
     if df is None:
         return status
@@ -180,20 +243,45 @@ def _run_setup(args: argparse.Namespace) -> int:
     default_tabular = TabularConfig()
 
     # 5. Model.
-    print(
-        "\nModel: which LLM generates the free text. Examples: "
-        "gemini-3.1-flash-lite-preview, gpt-4o-mini, Qwen/Qwen2.5-14B-Instruct (local)."
+    print("\nModel: which LLM generates the free text.")
+    model_options = _build_model_menu(default_llm.model, _local_cached_models())
+    for i, (label, _) in enumerate(model_options, start=1):
+        print(f"  {i}. {label}")
+    custom_index = len(model_options) + 1
+    print(f"  {custom_index}. Custom -- enter a model name/path not listed above")
+
+    default_choice = next(
+        (i for i, (_, value) in enumerate(model_options, start=1) if value == default_llm.model),
+        1,
     )
-    model_response = input(f"Model [{default_llm.model}]: ").strip()
-    model = model_response or default_llm.model
+    model_response = input(f"Model [{default_choice}]: ").strip()
+    if not model_response:
+        model = model_options[default_choice - 1][1]
+    elif model_response.isdigit():
+        choice = int(model_response)
+        if choice == custom_index:
+            custom_response = input("Custom model name/path: ").strip()
+            if not custom_response:
+                return _fail("custom model name cannot be empty.")
+            model = custom_response
+        elif 1 <= choice <= len(model_options):
+            model = model_options[choice - 1][1]
+        else:
+            return _fail(f"invalid model menu choice: {choice}")
+    else:
+        # Non-numeric input is a direct free-text model name/path override --
+        # consistent with the rest of the wizard's "suggestion, or type your
+        # own" prompts (see the free-text-column question above).
+        model = model_response
 
     # 6. Provider.
+    suggested_provider = resolve_provider(model, "auto")
     print(
         "\nProvider: which backend actually makes the call. 'auto' picks one based "
         f"on the model name; or force one of {sorted(VALID_PROVIDERS)}."
     )
-    provider_response = input(f"Provider [{default_llm.provider}]: ").strip()
-    provider = provider_response or default_llm.provider
+    provider_response = input(f"Provider [{suggested_provider}]: ").strip()
+    provider = provider_response or suggested_provider
     if provider not in VALID_PROVIDERS:
         return _fail(f"invalid provider: {provider!r}; must be one of {sorted(VALID_PROVIDERS)}")
 
