@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "Generate synthetic tabular datasets with LLM-generated, context-consistent free-text columns"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
+# torch/vllm are capped to the exact minor version verified working on this
+# hardware -- an unbounded torch install pulled 2.13.0 in testing, which
+# requires a newer CUDA driver than this machine's (570.211.01 / CUDA 12.8)
+# and broke local generation with a driver-version error at engine init.
 dependencies = [
     "google-genai>=2.17.0",
     "huggingface-hub>=0.36.2",
@@ -13,9 +17,9 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
     "scipy>=1.15.3",
-    "torch>=2.9.1",
+    "torch>=2.9.1,<2.10",
     "tqdm>=4.70.0",
-    "vllm>=0.15.1",
+    "vllm>=0.15.1,<0.16",
 ]
 
 [project.scripts]

@@ -2333,9 +2333,9 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scipy", specifier = ">=1.15.3" },
-    { name = "torch", specifier = ">=2.9.1" },
+    { name = "torch", specifier = ">=2.9.1,<2.10" },
     { name = "tqdm", specifier = ">=4.70.0" },
-    { name = "vllm", specifier = ">=0.15.1" },
+    { name = "vllm", specifier = ">=0.15.1,<0.16" },
 ]
 
 [package.metadata.requires-dev]
