@@ -1,7 +1,6 @@
 import json
 import subprocess
 import sys
-from datetime import date
 
 import pandas as pd
 
@@ -64,11 +63,13 @@ def test_cli_dry_run_without_explicit_output_writes_auto_named_log(tmp_path):
     )
     assert result.returncode == 0, result.stderr
 
-    today = date.today().isoformat()
     # dry-run logs get a distinct "dry-run_" prefix so a later real run on
-    # the same day doesn't silently overwrite the dry-run's estimate.
-    log_path = tmp_path / f"dry-run_in_synthetic_{today}.json"
-    assert log_path.exists()
+    # the same day doesn't silently overwrite the dry-run's estimate. Match
+    # by glob rather than a hardcoded timestamp to avoid a minute-boundary
+    # race between this assertion and the subprocess's own clock read.
+    matches = list(tmp_path.glob("dry-run_in_synthetic_*.json"))
+    assert len(matches) == 1, matches
+    log_path = matches[0]
 
     log = json.loads(log_path.read_text())
     assert log["dry_run"] is True

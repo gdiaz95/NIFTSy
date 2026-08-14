@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -72,12 +72,14 @@ def _build_model_menu(
 
 
 def _default_output_path(input_csv: str) -> Path:
-    """<input_dir>/<input_stem>_synthetic_<today>.csv -- the automatic output
-    location whenever -o/--output isn't given explicitly."""
+    """<input_dir>/<input_stem>_synthetic_<timestamp>.csv -- the automatic
+    output location whenever -o/--output isn't given explicitly. Timestamp
+    includes hour:minute (not just the date), so two runs on the same day
+    don't silently overwrite each other."""
     input_path = Path(input_csv)
-    today = date.today().isoformat()
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
     suffix = input_path.suffix or ".csv"
-    return input_path.parent / f"{input_path.stem}_synthetic_{today}{suffix}"
+    return input_path.parent / f"{input_path.stem}_synthetic_{timestamp}{suffix}"
 
 
 def _list_csv_files(directory: Path) -> list[str]:
@@ -98,7 +100,7 @@ def _build_parser() -> argparse.ArgumentParser:
     generate.add_argument("input_csv")
     generate.add_argument(
         "-o", "--output", default=None, dest="output_csv",
-        help="Output CSV path. Defaults to <input_dir>/<input_name>_synthetic_<date>.csv.",
+        help="Output CSV path. Defaults to <input_dir>/<input_name>_synthetic_<timestamp>.csv.",
     )
     generate.add_argument(
         "--text-column", action="append", dest="text_columns", default=[],

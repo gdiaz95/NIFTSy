@@ -1,4 +1,4 @@
-from datetime import date
+import re
 from pathlib import Path
 
 import niftsy.cli as cli_module
@@ -76,16 +76,22 @@ def test_local_cached_models_returns_empty_list_on_scan_failure(monkeypatch):
     assert cli_module._local_cached_models() == []
 
 
-def test_default_output_path_uses_synthetic_date_suffix_next_to_input():
-    today = date.today().isoformat()
+_TIMESTAMP_PATTERN = r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}"
+
+
+def test_default_output_path_uses_synthetic_timestamp_suffix_next_to_input():
     result = _default_output_path("data/adult_with_three.csv")
-    assert result == Path(f"data/adult_with_three_synthetic_{today}.csv")
+    assert result.parent == Path("data")
+    assert re.fullmatch(
+        rf"adult_with_three_synthetic_{_TIMESTAMP_PATTERN}\.csv", result.name
+    )
 
 
 def test_default_output_path_falls_back_to_csv_suffix_when_input_has_none():
-    today = date.today().isoformat()
     result = _default_output_path("data/adult_with_three")
-    assert result == Path(f"data/adult_with_three_synthetic_{today}.csv")
+    assert re.fullmatch(
+        rf"adult_with_three_synthetic_{_TIMESTAMP_PATTERN}\.csv", result.name
+    )
 
 
 def test_list_csv_files_filters_and_sorts(tmp_path):

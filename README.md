@@ -78,10 +78,13 @@ niftsy generate data/my_dataset.csv --config niftsy_config.yml
 That's the whole workflow. You'll get two files next to your input, named
 after it automatically:
 
-- `my_dataset_synthetic_2026-08-14.csv` — the synthetic data.
-- `my_dataset_synthetic_2026-08-14.json` — a log of what happened: token
-  usage, how long it took, and every parameter used for the run (so you can
-  always answer "what settings produced this file?").
+- `my_dataset_synthetic_2026-08-14_11-45.csv` — the synthetic data.
+- `my_dataset_synthetic_2026-08-14_11-45.json` — a log of what happened:
+  token usage, how long it took, and every parameter used for the run (so
+  you can always answer "what settings produced this file?").
+
+The timestamp includes hour:minute, not just the date, so running
+`generate` twice in the same day never silently overwrites the first run.
 
 **Prefer Python?** Skip the CLI entirely:
 
@@ -118,7 +121,7 @@ If `INPUT_CSV` is omitted, the first question asks for a data directory
 
 | Flag | Meaning | Default |
 |---|---|---|
-| `-o, --output` | Output CSV path | `<input_dir>/<input_name>_synthetic_<date>.csv` |
+| `-o, --output` | Output CSV path | `<input_dir>/<input_name>_synthetic_<timestamp>.csv` (date + hour:minute) |
 | `--text-column` (repeatable) | Free-text column to generate | falls back to `--config`'s `text_columns` |
 | `--target-column` | Target/label column, used as context | falls back to config |
 | `--config` | Path to a `GenerationConfig` YAML (e.g. from `setup`) | none — built-in defaults |
@@ -280,9 +283,10 @@ installed `torch` build expects, or install within the pinned range above.
 
 Every `generate` run writes one JSON file (see the CLI table above for the
 default path). A `--dry-run`'s log gets a `dry-run_` prefix on its filename
-— e.g. `dry-run_my_dataset_synthetic_2026-08-14.json` — so running a dry-run
-and then a real run against the same input on the same day never collide on
-the same log file. Example shape (real run):
+— e.g. `dry-run_my_dataset_synthetic_2026-08-14_11-45.json` — so running a
+dry-run and then a real run against the same input never collide on the
+same log file (and the hour:minute timestamp means two real runs the same
+day don't collide with each other either). Example shape (real run):
 
 ```json
 {
@@ -294,7 +298,7 @@ the same log file. Example shape (real run):
   "config": { "...": "the full GenerationConfig used for this run" },
   "config_hash": "a1b2c3d4e5f6",
   "input_csv": "data/my_dataset.csv",
-  "output_csv": "data/my_dataset_synthetic_2026-08-14.csv",
+  "output_csv": "data/my_dataset_synthetic_2026-08-14_11-45.csv",
   "llm_usage": {"prompt_tokens": 12345, "completion_tokens": 6789, "thinking_tokens": 0, "total_tokens": 19134, "requests": 500},
   "failed_row_indices": []
 }
