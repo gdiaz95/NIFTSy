@@ -52,12 +52,14 @@ free checks, strongly recommended before any real run:
 - **Not sure which columns are free text, or what `--max-words` should be?**
 
   ```bash
-  niftsy inspect data/my_dataset.csv --text-column bio --text-column notes
+  niftsy inspect data/my_dataset.csv
   ```
 
-  Prints word-count stats (mean, median, p90/p95, max) per column — no LLM
-  calls, no cost — to help you pick sensible values before spending on a
-  real run.
+  With no flags, it auto-detects likely free-text columns (the same
+  heuristic `setup` uses) and prints word-count stats (mean, median,
+  p90/p95, max) for each — no LLM calls, no cost — to help you pick sensible
+  values before spending on a real run. Pass `--text-column bio --text-column
+  notes` explicitly if you want stats for specific columns instead.
 
 - **Always check the cost before committing.** Add `--dry-run` to `generate`
   — it estimates the number of LLM calls and rough token count without
@@ -137,10 +139,17 @@ any flag you pass overrides just that field. A run log is **always**
 written (see [Run log format](#run-log-format)), not only when `--run-log`
 is given explicitly.
 
-### `niftsy inspect INPUT_CSV --text-column COL [--text-column COL ...]`
+### `niftsy inspect INPUT_CSV [--text-column COL ...]`
 
 Prints `count`/`mean`/`median`/`p90`/`p95`/`max` word-count stats per column.
 No generation, no LLM calls, no cost.
+
+- `--text-column` (repeatable) — which column(s) to describe. **Optional.**
+  If omitted entirely, runs the same auto-detection heuristic `setup` uses
+  (`detect_free_text_columns`: object/string columns with a unique-value
+  ratio ≥ 80% and an average word count ≥ 3) and describes whatever it
+  finds, printing the detected list first. If detection finds nothing,
+  prints `(none detected)` and exits — no error.
 
 ## `GenerationConfig` reference
 
@@ -255,6 +264,17 @@ unknown column name, etc. Never a raw traceback from a third-party library.
 
 `--provider auto` (the default) picks based on the model name; pass it
 explicitly to override.
+
+**A note on `torch`/`vllm` versions:** these are pinned to a specific minor
+version range in `pyproject.toml` (currently `torch>=2.9.1,<2.10`,
+`vllm>=0.15.1,<0.16`) rather than left unbounded. An unbounded install can
+silently pull a newer `torch` release that requires a newer CUDA driver
+than your machine has — this happened in testing (a fresh install pulled
+`torch==2.13.0`, which needs a newer driver than a machine running driver
+570.211.01 / CUDA 12.8 had, and failed with a driver-version error at
+engine init). If you hit a CUDA-driver error on the `local` provider,
+check `nvidia-smi`'s reported driver/CUDA version against what your
+installed `torch` build expects, or install within the pinned range above.
 
 ## Run log format
 

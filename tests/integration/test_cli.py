@@ -19,6 +19,41 @@ def test_cli_dry_run(tmp_path):
     assert "estimate" in result.stdout.lower()
 
 
+def test_inspect_with_no_flags_auto_detects_free_text_columns(tmp_path):
+    csv_path = tmp_path / "in.csv"
+    pd.DataFrame({
+        "age": [20, 30, 40, 50, 60],
+        "bio": [
+            "works in tech as a software engineer",
+            "teacher at the local elementary school",
+            "nurse who specializes in emergency care",
+            "student studying computer science full time",
+            "retired after forty years of factory work",
+        ],
+    }).to_csv(csv_path, index=False)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "niftsy.cli", "inspect", str(csv_path)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Detected likely free-text columns" in result.stdout
+    assert "bio" in result.stdout
+    assert "count=5" in result.stdout
+
+
+def test_inspect_with_no_flags_and_no_detectable_columns_reports_none(tmp_path):
+    csv_path = tmp_path / "in.csv"
+    pd.DataFrame({"age": [20, 30, 40], "category": ["a", "a", "b"]}).to_csv(csv_path, index=False)
+
+    result = subprocess.run(
+        [sys.executable, "-m", "niftsy.cli", "inspect", str(csv_path)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "(none detected)" in result.stdout
+
+
 def test_cli_dry_run_without_explicit_output_writes_auto_named_log(tmp_path):
     csv_path = tmp_path / "in.csv"
     pd.DataFrame({"age": [20, 30, 40], "bio": ["a", "b", "c"]}).to_csv(csv_path, index=False)

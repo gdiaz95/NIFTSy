@@ -129,8 +129,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     inspect.add_argument("input_csv")
     inspect.add_argument(
-        "--text-column", action="append", dest="text_columns", default=[], required=True,
-        help="Free-text column to describe. Repeatable.",
+        "--text-column", action="append", dest="text_columns", default=[],
+        help="Free-text column to describe. Repeatable. If omitted entirely, "
+             "inspect auto-detects likely free-text columns.",
     )
 
     setup = subparsers.add_parser(
@@ -172,11 +173,20 @@ def _run_inspect(args: argparse.Namespace) -> int:
     if df is None:
         return status
 
-    unknown = [col for col in args.text_columns if col not in df.columns]
+    text_columns = args.text_columns
+    if not text_columns:
+        text_columns = detect_free_text_columns(df)
+        print("Detected likely free-text columns (unique ratio >= 80%, avg words >= 3):")
+        if not text_columns:
+            print("  (none detected)")
+            return 0
+        print(f"  {', '.join(text_columns)}\n")
+
+    unknown = [col for col in text_columns if col not in df.columns]
     if unknown:
         return _fail(f"unknown column(s) in dataframe: {sorted(set(unknown))}")
 
-    stats = describe_text_columns(df, args.text_columns)
+    stats = describe_text_columns(df, text_columns)
     for col, s in stats.items():
         if s["count"] == 0:
             print(f"{col}: no non-empty rows found.")
