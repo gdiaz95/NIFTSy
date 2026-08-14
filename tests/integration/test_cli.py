@@ -65,7 +65,9 @@ def test_cli_dry_run_without_explicit_output_writes_auto_named_log(tmp_path):
     assert result.returncode == 0, result.stderr
 
     today = date.today().isoformat()
-    log_path = tmp_path / f"in_synthetic_{today}.json"
+    # dry-run logs get a distinct "dry-run_" prefix so a later real run on
+    # the same day doesn't silently overwrite the dry-run's estimate.
+    log_path = tmp_path / f"dry-run_in_synthetic_{today}.json"
     assert log_path.exists()
 
     log = json.loads(log_path.read_text())

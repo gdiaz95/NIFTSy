@@ -500,7 +500,15 @@ def _run_generate(args: argparse.Namespace) -> int:
     text_columns = args.text_columns if args.text_columns else None
 
     output_path = Path(args.output_csv) if args.output_csv else _default_output_path(args.input_csv)
-    log_path = Path(args.run_log) if args.run_log else output_path.with_suffix(".json")
+    if args.run_log:
+        log_path = Path(args.run_log)
+    elif args.dry_run:
+        # Distinct name from a real run's log -- otherwise a dry-run today
+        # followed by a real run later the same day would silently overwrite
+        # the dry-run estimate at the same auto-computed path.
+        log_path = output_path.with_name(f"dry-run_{output_path.stem}.json")
+    else:
+        log_path = output_path.with_suffix(".json")
 
     try:
         result = generate_synthetic_dataset(
@@ -530,7 +538,8 @@ def _run_generate(args: argparse.Namespace) -> int:
         json.dump(log_record, f, indent=2, default=str)
 
     if args.dry_run:
-        print(f"Dry run estimate: {result.run_log}")
+        print("Dry run estimate:")
+        print(json.dumps(result.run_log, indent=2, default=str))
         print(f"Wrote log to {log_path}")
         return 0
 
