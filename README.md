@@ -15,13 +15,28 @@ profile.
 
 ## Install
 
+**Requires [`uv`](https://docs.astral.sh/uv/getting-started/installation/)**
+— niftsy is installed and run through it, not raw `pip`/`venv`. If a machine
+doesn't have it yet:
+
 ```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then, from the repo (or anywhere the wheel + this repo's `.python-version`
+file are together):
+
+```bash
+uv venv   # picks up .python-version automatically; downloads a matching
+          # interpreter if the system Python is too old (e.g. 3.8) or missing
 uv sync
 ```
 
-Requires Python 3.10–3.13. That's it — Gemini, OpenAI, and local-vLLM
-support are all installed by default (no extras to remember); which one
-actually runs is a config choice, not an install choice.
+Requires Python 3.10–3.13 — `.python-version` pins `3.10`, and `uv` reads it
+automatically as long as it's present alongside your project/venv. If you're
+distributing just the built wheel to another machine rather than cloning the
+repo, copy `.python-version` along with it, or `uv venv` there will fall back
+to whatever `python3` the system already has (which may be too old).
 
 ## Quickstart
 
@@ -278,6 +293,14 @@ than your machine has — this happened in testing (a fresh install pulled
 engine init). If you hit a CUDA-driver error on the `local` provider,
 check `nvidia-smi`'s reported driver/CUDA version against what your
 installed `torch` build expects, or install within the pinned range above.
+
+This pinned range has been verified end-to-end (install, `inspect`,
+`--dry-run`, a real API call, and a real local vLLM generation) on three
+machines with different drivers — 570.211.01/CUDA 12.8, 535.183.01/CUDA
+12.2, and 535.86.05/CUDA 12.2 — so it's not narrowly tuned to one box. If a
+new environment's driver falls outside this range and hits the error above,
+that's a real per-environment pin decision, not a bug to silently work
+around.
 
 ## Run log format
 
