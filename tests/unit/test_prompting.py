@@ -11,6 +11,18 @@ def test_clean_generated_text_strips_meta_phrase():
     assert clean_generated_text(text) == "Software engineer with five years experience."
 
 
+def test_clean_generated_text_strips_leading_preamble():
+    # Regression test: a leading preamble phrase (the model echoing "return
+    # only"/"here's your requested" before answering) must not wipe out the
+    # real content that follows — this previously caused ~99.75% data loss
+    # on a long-form free-text column.
+    text = "Here's your requested amenities list: Air conditioning, WiFi, and a full kitchen."
+    assert clean_generated_text(text) == "Air conditioning, WiFi, and a full kitchen."
+
+    text2 = "Return only: A cozy studio with modern amenities and great natural light."
+    assert clean_generated_text(text2) == "A cozy studio with modern amenities and great natural light."
+
+
 def test_cap_words_truncates_to_exact_count():
     text = "one two three four five"
     assert cap_words(text, 3) == "one two three"
