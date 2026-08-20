@@ -23,6 +23,19 @@ def test_clean_generated_text_strips_leading_preamble():
     assert clean_generated_text(text2) == "A cozy studio with modern amenities and great natural light."
 
 
+def test_clean_generated_text_converts_json_array_instead_of_wiping_it():
+    # Regression test: some models answer a list-shaped request with a JSON
+    # array; the bracket-stripping regex used to treat the whole response as
+    # one big "[annotation]" and wipe it to an empty string.
+    text = '["Heating", "Kitchen", "Essentials", "Wifi"]'
+    assert clean_generated_text(text) == "Heating, Kitchen, Essentials, Wifi"
+
+    # Malformed/non-list bracketed text should pass through unharmed rather
+    # than being wiped to empty.
+    text2 = "[not valid json really"
+    assert clean_generated_text(text2) == "[not valid json really"
+
+
 def test_cap_words_truncates_to_exact_count():
     text = "one two three four five"
     assert cap_words(text, 3) == "one two three"
