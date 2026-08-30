@@ -196,8 +196,9 @@ def generate_free_text_column(
             for i, response_text in zip(batch_indices, responses):
                 try:
                     cleaned_response = clean_generated_text(response_text)
-                    if looks_like_meta_output(cleaned_response):
-                        cleaned_response = ""
+                    if not cleaned_response or looks_like_meta_output(cleaned_response):
+                        failed_updates[i] = "Response was empty or looked like meta-commentary."
+                        continue
                     row_updates[i] = cap_words(
                         cleaned_response,
                         max_words_generation,
@@ -225,8 +226,8 @@ def generate_free_text_column(
             prompt = _build_prompts_for_indices([i])[0]
             response_text = llm_backend.generate_batch([prompt], config=generation_config)[0]
             cleaned_response = clean_generated_text(response_text)
-            if looks_like_meta_output(cleaned_response):
-                cleaned_response = ""
+            if not cleaned_response or looks_like_meta_output(cleaned_response):
+                return None, "Response was empty or looked like meta-commentary."
             return cap_words(cleaned_response, max_words_generation), None
         except Exception as exc:
             if _is_systemic_error(exc):

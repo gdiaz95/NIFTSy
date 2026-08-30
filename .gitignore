@@ -16,3 +16,10 @@ wheels/
 plan.md
 
 .coverage
+
+# Real/generated data -- never commit input datasets or generation output
+data/
+logs/
+reports/
+.metadata/
+*_synthetic_*.csv

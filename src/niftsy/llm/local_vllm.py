@@ -3,19 +3,48 @@ from __future__ import annotations
 import gc
 import logging
 import os
+from typing import Any
 
 from huggingface_hub.utils import GatedRepoError, RepositoryNotFoundError
-from vllm import LLM, SamplingParams
-from vllm.distributed.parallel_state import (
-    destroy_distributed_environment,
-    destroy_model_parallel,
-)
 
 from niftsy.exceptions import NiftsyError
 from niftsy.llm.base import UsageTracker
 from niftsy.llm.gpu import select_free_gpu
 
 LOGGER = logging.getLogger(__name__)
+
+# vllm/torch are an optional extra (`uv sync --extra local`) since they're
+# Linux + CUDA-GPU only -- imported lazily here, on first backend
+# construction, rather than at module scope, so the rest of niftsy (and its
+# test suite) works without them installed. Tests monkeypatch these module
+# attributes directly (see tests/unit/test_local_vllm.py), which the guard
+# in _ensure_vllm_imported() respects by skipping the real import.
+LLM: Any = None
+SamplingParams: Any = None
+destroy_distributed_environment: Any = None
+destroy_model_parallel: Any = None
+
+
+def _ensure_vllm_imported() -> None:
+    global LLM, SamplingParams, destroy_distributed_environment, destroy_model_parallel
+    if LLM is not None:
+        return
+    try:
+        from vllm import LLM as _LLM
+        from vllm import SamplingParams as _SamplingParams
+        from vllm.distributed.parallel_state import (
+            destroy_distributed_environment as _dde,
+        )
+        from vllm.distributed.parallel_state import destroy_model_parallel as _dmp
+    except ImportError as exc:
+        raise NiftsyError(
+            "The 'local' provider needs vLLM, which isn't installed. Install it "
+            "with: uv sync --extra local (requires Linux + a CUDA GPU). For API "
+            "providers, use --provider gemini or --provider openai instead."
+        ) from exc
+    LLM, SamplingParams = _LLM, _SamplingParams
+    destroy_distributed_environment, destroy_model_parallel = _dde, _dmp
+
 
 _DEFAULT_STOP_SEQUENCES = [
     "[INST]", "[/INST]", "</s>", "<|im_start|>", "<|im_end|>",
@@ -119,6 +148,12 @@ class LocalVLLMBackend:
             selected_index = select_free_gpu(self.gpu_util).index
 
         os.environ["CUDA_VISIBLE_DEVICES"] = str(selected_index)
+
+        # Must come after CUDA_VISIBLE_DEVICES is set above -- vllm's import
+        # does device detection that can cache device counts, so importing
+        # it before masking devices would make --gpu-index silently land on
+        # the wrong GPU.
+        _ensure_vllm_imported()
 
         LOGGER.info("Initializing local vLLM backend on GPU %s", selected_index)
 

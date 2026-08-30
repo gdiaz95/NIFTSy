@@ -14,8 +14,10 @@ from niftsy.config import GenerationConfig
 from niftsy.exceptions import NiftsyError
 from niftsy.llm.base import LLMBackend
 from niftsy.llm.factory import build_llm_backend, resolve_provider
+from niftsy.tabular.knn import knn_retrieval_with_text_blocks
 from niftsy.tabular.pipeline_step import run_tabular_generation
 from niftsy.text.generation import generate_free_text_column
+from niftsy.text.vectorize import prepare_text_vector_features
 
 LOGGER = logging.getLogger(__name__)
 
@@ -142,18 +144,54 @@ class SyntheticDataGenerator:
 
         if self._text_columns:
             backend = llm or self._get_or_build_backend()
+            llm_cfg = self.config.llm
+            # Each text column after the first conditions its neighbor search
+            # on the text similarity of already-generated earlier columns, in
+            # addition to tabular similarity -- matching the original research
+            # pipeline's per-stage distance blending
+            # (d_j^2 = alpha * d_tab^2 + sum_c beta_c * ||z_c(s) - z_c(r)||^2).
+            text_vector_blocks: dict[str, dict[str, pd.DataFrame]] = {}
             for text_column in self._text_columns:
+                if tabular_result.nn_idx is None:
+                    stage_nn_idx = None  # k=0 ablation: no neighbor context at all
+                elif text_vector_blocks:
+                    weighted_blocks = [
+                        (
+                            block["real"],
+                            block["synthetic"],
+                            float(llm_cfg.distance_beta_by_column.get(prev_col, llm_cfg.distance_beta_default)),
+                        )
+                        for prev_col, block in text_vector_blocks.items()
+                    ]
+                    stage_nn_idx, _ = knn_retrieval_with_text_blocks(
+                        tabular_result.real_z,
+                        tabular_result.z_correlated,
+                        k=k_neighbors,
+                        alpha=llm_cfg.distance_alpha,
+                        text_blocks=weighted_blocks,
+                        feature_weights=self._feature_weights,
+                    )
+                else:
+                    stage_nn_idx = tabular_result.nn_idx  # first text column: tabular-only
+
                 dataframe, failed = generate_free_text_column(
                     backend,
                     original_df=self._df,
                     synthetic_df=dataframe,
-                    nn_idx=tabular_result.nn_idx,
+                    nn_idx=stage_nn_idx,
                     llm_cfg=self.config.llm,
                     prompt_cfg=self.config.prompt,
                     text_column=text_column,
                     k_neighbors=k_neighbors,
                 )
                 failed_row_indices = sorted(set(failed_row_indices) | set(failed))
+
+                if tabular_result.nn_idx is not None:
+                    hash_dim = llm_cfg.text_vector_hash_dim
+                    text_vector_blocks[text_column] = {
+                        "real": prepare_text_vector_features(self._df[text_column], hash_dim=hash_dim),
+                        "synthetic": prepare_text_vector_features(dataframe[text_column], hash_dim=hash_dim),
+                    }
             if hasattr(backend, "usage"):
                 llm_usage = backend.usage.summary()
 

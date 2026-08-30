@@ -1,5 +1,6 @@
 import pandas as pd
 
+import niftsy.pipeline as pipeline_module
 from niftsy import (
     GenerationConfig,
     LLMConfig,
@@ -16,6 +17,12 @@ def _real_df():
         "bio": ["works in tech", "teacher", "nurse", "student", "retired",
                 "engineer", "artist", "chef", "driver", "manager"],
     })
+
+
+def _real_df_two_text_columns():
+    df = _real_df()
+    df["notes"] = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
+    return df
 
 
 def test_end_to_end_with_fake_backend():
@@ -109,6 +116,45 @@ def test_dry_run_log_also_includes_config_snapshot_and_hash():
     assert result.run_log["dry_run"] is True
     assert "config" in result.run_log
     assert "config_hash" in result.run_log
+
+
+def test_multi_column_generation_blends_prior_columns_text_similarity(monkeypatch):
+    df = _real_df_two_text_columns()
+    calls = []
+    real_fn = pipeline_module.knn_retrieval_with_text_blocks
+
+    def spy(*args, **kwargs):
+        calls.append(kwargs.get("text_blocks"))
+        return real_fn(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline_module, "knn_retrieval_with_text_blocks", spy)
+
+    result = generate_synthetic_dataset(
+        df, text_columns=["bio", "notes"], model="fake-model", n_rows=5,
+        llm=FakeLLMBackend(), seed=42,
+    )
+    # Only the second column's stage should trigger the blended KNN call --
+    # the first column has no prior text to blend, so it uses the plain
+    # tabular-only nn_idx directly (no call at all for stage 1).
+    assert len(calls) == 1
+    assert len(calls[0]) == 1  # exactly one prior column's block ("bio")
+    assert len(result.dataframe) == 5
+
+
+def test_k0_ablation_skips_text_blending_for_multi_column(monkeypatch):
+    df = _real_df_two_text_columns()
+    calls = []
+    monkeypatch.setattr(
+        pipeline_module, "knn_retrieval_with_text_blocks",
+        lambda *a, **k: calls.append(1),
+    )
+
+    result = generate_synthetic_dataset(
+        df, text_columns=["bio", "notes"], model="fake-model", n_rows=3,
+        llm=FakeLLMBackend(), k_neighbors=0,
+    )
+    assert calls == []
+    assert len(result.dataframe) == 3
 
 
 def test_fit_falls_back_to_config_dataset_fields():

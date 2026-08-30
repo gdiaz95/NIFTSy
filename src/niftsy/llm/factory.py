@@ -21,9 +21,10 @@ def resolve_provider(model: str, provider: str = "auto") -> str:
 def build_llm_backend(model: str, provider: str = "auto", **kwargs: Any) -> LLMBackend:
     """Build the LLM backend for the resolved provider.
 
-    All three provider SDKs (google-genai, openai, vllm+torch) are base
-    dependencies -- provider selection is a runtime/config choice, not an
-    install-time one, so no lazy-import guard is needed here.
+    google-genai and openai are base dependencies. vllm+torch are an
+    optional extra (`uv sync --extra local`, Linux + CUDA-GPU only) --
+    LocalVLLMBackend imports them lazily on construction, raising a
+    NiftsyError with install instructions if they're missing.
     """
     resolved = resolve_provider(model, provider)
 

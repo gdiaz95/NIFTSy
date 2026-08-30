@@ -29,7 +29,7 @@ file are together):
 ```bash
 uv venv   # picks up .python-version automatically; downloads a matching
           # interpreter if the system Python is too old (e.g. 3.8) or missing
-uv sync
+uv sync   # Gemini + OpenAI only — works on macOS/Windows/Linux
 ```
 
 Requires Python 3.10–3.13 — `.python-version` pins `3.10`, and `uv` reads it
@@ -37,6 +37,17 @@ automatically as long as it's present alongside your project/venv. If you're
 distributing just the built wheel to another machine rather than cloning the
 repo, copy `.python-version` along with it, or `uv venv` there will fall back
 to whatever `python3` the system already has (which may be too old).
+
+**Want the local vLLM provider too?** `torch`/`vllm` are Linux + CUDA-GPU
+only (no wheel exists for macOS/Windows), so they're an optional extra
+rather than a base dependency:
+
+```bash
+uv sync --extra local
+```
+
+Without this extra, `--provider local` raises a clear `NiftsyError` telling
+you to install it — Gemini and OpenAI work either way.
 
 ## Quickstart
 
@@ -278,7 +289,7 @@ unknown column name, etc. Never a raw traceback from a third-party library.
 |---|---|---|
 | `gemini` | `GEMINI_API_KEY` or `GOOGLE_API_KEY` in `.env` | Default provider; picked automatically for any model name containing "gemini". |
 | `openai` | `OPENAI_API_KEY` in `.env` | Picked automatically for model names starting with "gpt" or containing "openai". |
-| `local` | A CUDA GPU; `HUGGINGFACE_HUB_TOKEN` only for license-gated models | Runs via vLLM. First use of a new model downloads it to the standard Hugging Face cache (`~/.cache/huggingface/hub`) and can take a while for large models. `niftsy setup`'s model menu shows which models are already downloaded. |
+| `local` | `uv sync --extra local`; a CUDA GPU; `HUGGINGFACE_HUB_TOKEN` only for license-gated models | Runs via vLLM. First use of a new model downloads it to the standard Hugging Face cache (`~/.cache/huggingface/hub`) and can take a while for large models. `niftsy setup`'s model menu shows which models are already downloaded. |
 
 `--provider auto` (the default) picks based on the model name; pass it
 explicitly to override.
